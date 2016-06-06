@@ -1,0 +1,379 @@
+<!-- written by Maximilian Langewort -->
+
+<!DOCTYPE html>
+<!--Caution! This code was written to show the usage of a map in OpenLayers 3 with Django/Python + MongoDB in a very simple way for easier understanding. Hence, the code has nearly no security-mechanisms and should NOT BE USED UNMODIFIED in a real project!--> 
+<html xmlns="http://www.w3.org/1999/html">
+  <head>
+    <title>NoSQL-Map</title>
+	<!-- Including of the OpenLayer-Librarys-->
+    <link rel="stylesheet" href="http://openlayers.org/en/v3.15.1/css/ol.css" type="text/css">
+    <script src="http://openlayers.org/en/v3.15.1/build/ol.js"></script>
+	<!-- <style> Can be ignored!-->
+    <style>
+      a.skiplink {
+        position: absolute;
+        clip: rect(1px, 1px, 1px, 1px);
+        padding: 0;
+        border: 0;
+        height: 1px;
+        width: 1px;
+        overflow: hidden;
+      }
+      a.skiplink:focus {
+        clip: auto;
+        height: auto;
+        width: auto;
+        background-color: #fff;
+        padding: 0.3em;
+      }
+      #map:focus {
+        outline: #4A74A8 solid 0.15em;
+      }
+    </style>
+  </head>
+  <body>
+  <!-- Transmitting the data from views.py -->
+    <input type="hidden" id="mdb" name="variable" value="{{ mdb_Data }}">
+    <input type="hidden" id="mdb2" name="variable" value="{{ mdb_Data_2 }}">
+
+    <!-- Creates the form for the map -->
+    <a class="skiplink" href="#map">Go to map</a>
+    <div id="map" class="map" tabindex="0"></div>
+	<!-- Zoom Buttons --> 
+    <button id="zoom-out">Zoom out</button>
+    <button id="zoom-in">Zoom in</button>
+	<br/>
+	<br/>
+	<!-- Options for the selectiontype on the map--> 
+	<select id="type" size="1">
+	    <option>Point</option>
+        <option>Polygon</option>
+        <option selected>Box </option>        
+        <option>None</option>
+      </select>	 
+	  Select the desired Geometry to draw
+	  <br/>
+	  <br/>
+	<!-- Intersect-Button will reload the site with matched data to a selected box or polygon  --> 
+	<button id="intersect_btn">Intersect</button> if Box or Polygon, find intersection with the data
+	<br/> 
+	<br/> 
+	<!-- Limit, minimum/maximum Distance for the Near-Button--> 
+	Amount of hits to be shown (0, if not necassary)
+	<br/> 
+	<input type="text" step="any" id="limit"value="0" />
+	<br/> 
+	Minimum Distance (0, if not necassary)
+	<br/> 
+	<input type="text" step="any" id="minDis"value="0" />
+	<br/> 
+	Maximum Distance (0, if not necassary)
+	<br/> 
+	<input type="text" step="any" id="maxDis"value="0" />
+	<br/> 
+	<!-- Near-Button will reload the site with Data adjusted to the Options above; Some of the Twitter-Data is multiple times in the database so limit=10 could be able to display < 10 hits-->
+	<button id="near_btn">Near Point</button> 
+    
+    
+    <br/>
+
+      
+
+
+    <script>
+//Python data
+var tw_Data = document.getElementById("mdb").value;
+var fb_Data = document.getElementById("mdb2").value;
+var i = 0;
+// Variable for the new Path, when pressing Intersect- or Near-Button
+var href = "/?";
+// gets the selected type out of the HTML-Select
+var typeSelect = document.getElementById('type');
+// necassary for the selected objects on the map
+var draw;
+// User-made Object-Data
+var drawn_features;
+//Source of the user-made Polygons, Boxes, Points on the map
+var source = new ol.source.Vector({wrapX: false});
+// List for user-made Objects; 
+var feature_GeoJ_List = [];
+
+// [can be ignored] Just a ReplaceAll-Method. It is needed for formating strings.  
+String.prototype.replaceAll = function(search, replace)
+{
+    //if replace is not sent, return original string otherwise it will
+    //replace search string with 'undefined'.
+    if (replace === undefined) {
+        return this.toString();
+    }
+
+    return this.replace(new RegExp('[' + search + ']', 'g'), replace);
+};
+
+// Removes ' from the Python-Data, so it can be recognized as JSON by JavaScript
+tw_Data = tw_Data.replaceAll("'", "");
+fb_Data = fb_Data.replaceAll("'", "");
+
+// Transforms the Python-Data to JavaScript-Objects
+var obj_tw = JSON.parse(tw_Data);
+var obj_fb = JSON.parse(fb_Data);
+
+// Transform the Objects to dictionaries
+for(var key in obj_tw){
+    if (obj_tw.hasOwnProperty(key)){
+        var value=obj_tw[key];
+        // work with key and value
+    }
+}
+
+for(var key in obj_fb){
+    if (obj_fb.hasOwnProperty(key)){
+        var value=obj_fb[key];
+        // work with key and value
+    }
+}
+
+//Transform the data to Feature-Lists
+var iconFeatures_tw=[];
+var iconFeatures_fb=[];
+
+for ( var i=0; i < obj_tw.length; ++i )
+{
+   var iconFeature = new ol.Feature({geometry: new ol.geom.Point(obj_tw[i].coordinates.coordinates)});
+iconFeatures_tw.push(iconFeature);
+
+
+}
+
+
+for ( var i=0; i < obj_fb.length; ++i )
+{
+
+  var iconFeature = new ol.Feature({geometry: new ol.geom.Point(obj_fb[i].geo.coordinates)
+});
+iconFeatures_fb.push(iconFeature);
+
+
+}
+
+
+//Transform the Feature-Lists to OpenLayer-Source-Objects
+var vectorSource_tw = new ol.source.Vector({
+  features: iconFeatures_tw //add an array of features
+  
+});
+
+var vectorSource_fb = new ol.source.Vector({
+  features: iconFeatures_fb //add an array of features
+  
+});
+
+//Specifies, the Icons of the Data: anchor: [0.5, 0.5] for an exact position of the image; source: Link to the desired image
+var iconStyle_tw = new ol.style.Style({
+  image: new ol.style.Icon(/** @type {olx.style.IconOptions} */ ({
+    anchor: [0.5, 0.5],
+    anchorXUnits: 'fraction',
+    anchorYUnits: 'pixels',
+    opacity: 0.75,
+	scale: 0.25,
+    src: 'https://cdn0.iconfinder.com/data/icons/20-flat-icons/128/email.png'
+  }))
+});
+
+var iconStyle_fb = new ol.style.Style({
+  image: new ol.style.Icon(/** @type {olx.style.IconOptions} */ ({
+    anchor: [0.5, 0.5],
+    anchorXUnits: 'fraction',
+    anchorYUnits: 'pixels',
+    opacity: 0.75,
+	scale: 0.25,
+    src: 'https://cdn0.iconfinder.com/data/icons/20-flat-icons/128/location-pointer.png'
+  }))
+});
+
+// creates layers of the data with the icons for the map
+var vectorLayer_tw = new ol.layer.Vector({
+  source: vectorSource_tw,
+  style: iconStyle_tw,
+  
+});
+
+var vectorLayer_fb = new ol.layer.Vector({
+  source: vectorSource_fb,
+  style: iconStyle_fb,
+  
+});
+
+
+
+
+
+
+
+
+// Specifies the Layer of the user-made objects and gives them color, that they can be seen	  
+var drawVector = new ol.layer.Vector({
+        source: source,
+        style: new ol.style.Style({
+          fill: new ol.style.Fill({
+            color: 'rgba(255, 255, 255, 0.2)'
+          }),
+          stroke: new ol.style.Stroke({
+            color: '#ffcc33',
+            width: 2
+          }),
+          image: new ol.style.Circle({
+            radius: 7,
+            fill: new ol.style.Fill({
+              color: '#ffcc33'
+            })
+          })
+        })
+      });
+
+
+//Function for user-made Objects. 
+	function addInteraction() {
+	source.clear();
+        var value = typeSelect.value;
+         if (value !== 'None') {
+          var geometryFunction, maxPoints;
+          if (value === 'Square') {
+            value = 'Circle';
+            geometryFunction = ol.interaction.Draw.createRegularPolygon(4);
+          } else if (value === 'Box') {
+            value = 'LineString';
+            maxPoints = 2;
+            geometryFunction = function(coordinates, geometry) {
+              if (!geometry) {
+                geometry = new ol.geom.Polygon(null);
+              }
+              var start = coordinates[0];
+              var end = coordinates[1];
+              geometry.setCoordinates([
+                [start, [start[0], end[1]], end, [end[0], start[1]], start]
+              ]);
+			   
+              return geometry;
+            };
+          }
+		  
+          draw = new ol.interaction.Draw({
+            source: source,
+            type: /** @type {ol.geom.GeometryType} */ (value),
+            geometryFunction: geometryFunction,
+            maxPoints: maxPoints
+          });
+		  
+          map.addInteraction(draw);
+        }
+		
+      }
+	
+	
+	// This is the map-Object
+      var map = new ol.Map({
+	  //The 4 Layers: 1. the Map itself; 2. Twitter-Data; 3. FB-Data; 4. User-made Objects
+        layers: [
+          new ol.layer.Tile({
+            source: new ol.source.OSM()
+          }), vectorLayer_tw,vectorLayer_fb, drawVector
+        ],
+		// uses the html-map-object 
+        target: 'map',
+		//additional options [can be ignored]
+        controls: ol.control.defaults({
+          attributionOptions: /** @type {olx.control.AttributionOptions} */ ({
+            collapsible: false
+          })
+        }),
+		// center: Starting center; zoom: starting zoom (if < 3, map will be shown multiple times); Projection-System of the map (default: EPSG:3857)
+        view: new ol.View({
+          center: [24, 60],
+          zoom: 3,
+		  projection: ol.proj.get('EPSG:4326')
+        })
+      });
+
+	  
+	  
+	  
+	  // Just some Zoom-Buttons [can be ignored]
+      document.getElementById('zoom-out').onclick = function() {
+        var view = map.getView();
+        var zoom = view.getZoom();
+        view.setZoom(zoom - 1);
+		
+		
+      };
+
+	  
+      document.getElementById('zoom-in').onclick = function() {
+        var view = map.getView();
+        var zoom = view.getZoom();
+        view.setZoom(zoom + 1);
+		 
+      };
+
+      //update the user-made Object-Type, when the Selection in the html is changed
+      typeSelect.onchange = function() {
+        map.removeInteraction(draw);
+        addInteraction();
+      };
+	  
+		//Gets the user-made Box/Polygon and refreshes the site with the data, so the views.py can fetch the required data.	
+	   document.getElementById('intersect_btn').onclick = function() 
+	  {
+	  //item(3) is the Layer with the user-made Objects
+		drawn_features=map.getLayers().item(3).getSource().getFeatures();
+		var format = new ol.format.GeoJSON();
+		drawn_features.forEach(function(entry) 
+		{
+
+			feature_GeoJ_List.push(format.writeFeature(entry));
+		});
+		//build a new href in the style of: 127.0.0.1:8000/?geoJson_Data=*Objects*;transactionType=intersect
+		href = href + "geoJson_Data="+ feature_GeoJ_List.toString().replaceAll("\"","'");
+		href = href + ";transactionType=intersect";
+		window.location.href = href;
+	  };
+	  
+	  
+	  
+	  //gets the usermade Point and the additional data and refreshes the site with the data, so the views.py can fetch the required data.
+	  	   document.getElementById('near_btn').onclick = function() 
+	  {
+	  //item(3) is the Layer with the user-made Objects
+		drawn_features=map.getLayers().item(3).getSource().getFeatures();
+		var format = new ol.format.GeoJSON();
+		drawn_features.forEach(function(entry) 
+		{
+
+			feature_GeoJ_List.push(format.writeFeature(entry));
+		});
+		//build a new href in the style of: 127.0.0.1:8000/?geoJson_Data=*Objects*;limit=*Number*;minDis=*number*;maxDis=*number*;transactionType=near
+		href = href + "geoJson_Data="+ feature_GeoJ_List.toString().replaceAll("\"","'");
+		href = href + ";limit="+ document.getElementById("limit").value;
+		href = href + ";minDis="+ document.getElementById("minDis").value;
+		href = href + ";maxDis="+ document.getElementById("maxDis").value;
+		href = href + ";transactionType=near";
+		window.location.href = href;
+	  };
+	  
+	  //Deletes old usermade Objects, when a new one is made;
+		source.on("addfeature",function()
+		{
+		drawn_features=map.getLayers().item(1).getSource().getFeatures();
+			var feat = source.getFeatures();
+			while (feat.length > 1)
+			{
+				source.removeFeature(feat[0]);
+				feat.shift();
+			}
+		}
+		)
+		//Start the first TypeSelection, when the site is created
+      addInteraction();
+    </script>
+  </body>
+</html>
